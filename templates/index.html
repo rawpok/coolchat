@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public Chat</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="chat-wrapper">
+    <header>
+      <h1>💬 Public Chat</h1>
+      <p class="subhead">Welcome, <strong>{{ username }}</strong> • <a href="/logout">Log Out</a></p>
+    </header>
+
+    <main class="chat-box" id="chatBox">
+      <!-- Messages will appear here -->
+    </main>
+
+    <form method="POST" class="chat-form" id="chatForm">
+      <input type="text" name="message" id="messageInput" placeholder="Type your message..." required autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <script>
+    const box = document.getElementById("chatBox");
+    const form = document.getElementById("chatForm");
+    const input = document.getElementById("messageInput");
+
+    function scrollToBottom() {
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function renderMessages(messages) {
+      box.innerHTML = "";
+      messages.forEach(msg => {
+        const msgDiv = document.createElement("div");
+        msgDiv.className = "message";
+        msgDiv.innerHTML = `<span class='user'>${msg.user}</span><span class='text'>${msg.message}</span>`;
+        box.appendChild(msgDiv);
+      });
+      scrollToBottom();
+    }
+
+    function fetchMessages() {
+      fetch("/messages")
+        .then(res => res.json())
+        .then(data => renderMessages(data));
+    }
+
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      fetch("/", { method: "POST", body: formData }).then(() => {
+        input.value = "";
+        fetchMessages();
+      });
+    });
+
+    fetchMessages();
+    setInterval(fetchMessages, 2000);
+  </script>
+</body>
+</html>

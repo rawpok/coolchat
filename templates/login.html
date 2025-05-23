@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Log In - Public Chat</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="chat-wrapper">
+    <header>
+      <h1>Log In</h1>
+      <p class="subhead">Enter your account details to access chat.</p>
+    </header>
+
+    <form method="POST" class="chat-form" style="flex-direction: column; padding: 32px;">
+      <input type="text" name="username" placeholder="Username" required>
+      <input type="password" name="password" placeholder="Password" required>
+      <button type="submit">Log In</button>
+      <p style="margin-top: 16px;">Need an account? <a href="/signup">Sign up here</a></p>
+    </form>
+  </div>
+</body>
+</html>
