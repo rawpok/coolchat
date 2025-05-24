@@ -8,7 +8,7 @@ CHAT_LOG = "chatlog.json"
 USER_FILE = "users.json"
 BAN_FILE = "banned.json"
 ADMIN_USERNAME = "admin"
-ALLOWED_ADMIN_IPS = ["192.168.1.179"]
+ALLOWED_ADMIN_IPS = ["74.75.68.144"]
 
 # -- Data Loading --
 def load_chat():
