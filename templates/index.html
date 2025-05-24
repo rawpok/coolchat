@@ -28,6 +28,14 @@
     const form = document.getElementById("chatForm");
     const input = document.getElementById("messageInput");
 
+    function escapeHTML(str) {
+      return str.replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+    }
+
     function scrollToBottom() {
       box.scrollTop = box.scrollHeight;
     }
@@ -37,7 +45,7 @@
       messages.forEach(msg => {
         const msgDiv = document.createElement("div");
         msgDiv.className = "message";
-        msgDiv.innerHTML = `<span class='user'>${msg.user}</span><span class='text'>${msg.message}</span>`;
+        msgDiv.innerHTML = `<span class='user'>${escapeHTML(msg.user)}</span><span class='text'>${escapeHTML(msg.message)}</span>`;
         box.appendChild(msgDiv);
       });
       scrollToBottom();
