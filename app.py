@@ -1,6 +1,11 @@
-# Updated app.py: no email, admin PIN with time-based logic, full authentication flow
-import os, json, hashlib, random, time, re
+# Finalized app.py with:
+# ✅ Email verification (re-added)
+# ✅ No favicon.ico reference
+# ✅ Working admin login flow
+
+import os, json, hashlib, smtplib, random, time, re
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
+from email.mime.text import MIMEText
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = "changeme-secret"
@@ -17,11 +22,12 @@ COOKIES_FILE = "cookies.json"
 VERIF_CODES = {}
 VERIF_TIMES = {}
 ADMIN_USERNAME = "admin"
-ADMIN_EMAIL = "rawpok@icloud.com"  # still used in variables
+ADMIN_EMAIL = "rawpok@icloud.com"
 
-SLURS = ["nigger", "faggot", "retard", "tranny", "coon", "chink", "kike"]
+EMAIL_FROM = "coolchat.noreply@gmail.com"
+EMAIL_PASS = "jjievghapfvxoutf"  # Gmail App Password
 
-PIN_ROTATION = ["72018", "32912", "1763"]
+SLURS = ["nigger", "faggot", "retard", "fuck", "shit", "dick", "cock"]
 
 def load_json(file, default):
     if not os.path.exists(file):
@@ -39,9 +45,18 @@ def hash_password(pwd):
 def contains_slur(text):
     return any(re.search(rf"\b{re.escape(word)}\b", text, re.IGNORECASE) for word in SLURS)
 
-def get_current_pin():
-    index = int(time.time() / 30) % len(PIN_ROTATION)
-    return PIN_ROTATION[index]
+def send_verification_code(code):
+    try:
+        msg = MIMEText(f"Your admin verification code is: {code}")
+        msg["Subject"] = "Admin Login Code"
+        msg["From"] = EMAIL_FROM
+        msg["To"] = ADMIN_EMAIL
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL_FROM, EMAIL_PASS)
+            server.sendmail(msg["From"], [msg["To"]], msg.as_string())
+    except Exception as e:
+        print("❌ EMAIL ERROR:", type(e).__name__, str(e))
 
 users = load_json(USER_FILE, {})
 if ADMIN_USERNAME not in users:
@@ -106,13 +121,15 @@ def login():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
-        pin = request.form.get("adminpin", "").strip()
         users = load_json(USER_FILE, {})
-
         if username in users and users[username] == hash_password(password):
             if username == ADMIN_USERNAME:
-                if pin != get_current_pin():
-                    return redirect("/verify")
+                code = str(random.randint(100000, 999999))
+                VERIF_CODES[username] = code
+                VERIF_TIMES[username] = time.time()
+                send_verification_code(code)
+                session["pending"] = username
+                return redirect("/verify")
             session["username"] = username
             token = str(random.randint(10000000, 99999999))
             cookies = load_json(COOKIES_FILE, {})
@@ -126,19 +143,21 @@ def login():
 
 @app.route("/verify", methods=["GET", "POST"])
 def verify():
-    correct_pin = get_current_pin()
+    if "pending" not in session:
+        return redirect("/login")
     if request.method == "POST":
-        input_pin = request.form["adminpin"].strip()
-        if input_pin == correct_pin:
-            session["username"] = "admin"
+        code = request.form["code"].strip()
+        if VERIF_CODES.get(session["pending"]) == code:
+            username = session.pop("pending")
+            session["username"] = username
             token = str(random.randint(10000000, 99999999))
             cookies = load_json(COOKIES_FILE, {})
-            cookies[token] = "admin"
+            cookies[token] = username
             save_json(COOKIES_FILE, cookies)
             resp = make_response(redirect("/"))
             resp.set_cookie("login_token", token, max_age=60*60*24*30)
             return resp
-        return "Wrong PIN."
+        return "Incorrect verification code."
     return render_template("verify.html")
 
 @app.route("/logout")
