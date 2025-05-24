@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
 import os, json, hashlib, smtplib, random, time
+from email.mime.text import MIMEText
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = "changeme-secret"
@@ -47,7 +48,17 @@ def hash_password(pwd):
     return hashlib.sha256(pwd.encode()).hexdigest()
 
 def send_verification_code(code):
-    print(f"Verification code sent to {ADMIN_EMAIL}: {code}")  # Simulated email
+    msg = MIMEText(f"Your admin verification code is: {code}")
+    msg["Subject"] = "Admin Login Code"
+    msg["From"] = "destynp329@gmail.com"
+    msg["To"] = ADMIN_EMAIL
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login("destynp329@gmail.com", "YOUR_APP_PASSWORD")  # Replace with Gmail App Password
+            server.sendmail(msg["From"], [msg["To"]], msg.as_string())
+        print(f"Verification code sent to {ADMIN_EMAIL}")
+    except Exception as e:
+        print("Failed to send email:", e)
 
 # -- Ensure default admin account always exists --
 users = load_users()
@@ -60,11 +71,9 @@ if ADMIN_USERNAME not in users:
 def index():
     if "username" not in session:
         return redirect("/login")
-
     bans = load_bans()
     if session["username"] in bans:
         return render_template("banned.html", reason=bans[session["username"]])
-
     if request.method == "POST":
         message = request.form["message"].strip()
         if message:
