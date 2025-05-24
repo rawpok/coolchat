@@ -8,41 +8,26 @@ app.secret_key = "changeme-secret"
 CHAT_LOG = "chatlog.json"
 USER_FILE = "users.json"
 BAN_FILE = "banned.json"
+MOD_FILE = "mods.json"
+MUTE_FILE = "mutes.json"
+SLOWMODE_FILE = "slowmode.json"
+LOCKED_FILE = "locked.json"
 VERIF_CODES = {}
 VERIF_TIMES = {}
 ADMIN_USERNAME = "admin"
 ADMIN_EMAIL = "rawpok@icloud.com"
 
-# -- Data Loading --
-def load_chat():
-    if not os.path.exists(CHAT_LOG):
-        return []
-    with open(CHAT_LOG, "r") as f:
+# -- Utility Functions --
+
+def load_json(file, default):
+    if not os.path.exists(file):
+        return default
+    with open(file, "r") as f:
         return json.load(f)
 
-def save_chat(chat):
-    with open(CHAT_LOG, "w") as f:
-        json.dump(chat[-100:], f)
-
-def load_users():
-    if not os.path.exists(USER_FILE):
-        return {}
-    with open(USER_FILE, "r") as f:
-        return json.load(f)
-
-def save_users(users):
-    with open(USER_FILE, "w") as f:
-        json.dump(users, f)
-
-def load_bans():
-    if not os.path.exists(BAN_FILE):
-        return {}
-    with open(BAN_FILE, "r") as f:
-        return json.load(f)
-
-def save_bans(bans):
-    with open(BAN_FILE, "w") as f:
-        json.dump(bans, f)
+def save_json(file, data):
+    with open(file, "w") as f:
+        json.dump(data, f)
 
 def hash_password(pwd):
     return hashlib.sha256(pwd.encode()).hexdigest()
@@ -53,52 +38,164 @@ def send_verification_code(code):
     msg["From"] = "destynp329@gmail.com"
     msg["To"] = ADMIN_EMAIL
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login("destynp329@gmail.com", "khbl nzbp qcbn kbab")  # Replace with Gmail App Password
+        with smtpllib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login("destynp329@gmail.com", "YOUR_APP_PASSWORD")  # Replace with actual App Password
             server.sendmail(msg["From"], [msg["To"]], msg.as_string())
-        print(f"Verification code sent to {ADMIN_EMAIL}")
     except Exception as e:
         print("Failed to send email:", e)
 
-# -- Ensure default admin account always exists --
-users = load_users()
+# -- Default Admin Setup --
+
+users = load_json(USER_FILE, {})
 if ADMIN_USERNAME not in users:
     users[ADMIN_USERNAME] = hash_password("admin")
-    save_users(users)
+    save_json(USER_FILE, users)
 
 # -- Routes --
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if "username" not in session:
         return redirect("/login")
-    bans = load_bans()
-    if session["username"] in bans:
-        return render_template("banned.html", reason=bans[session["username"]])
+
+    username = session["username"]
+    chat = load_json(CHAT_LOG, [])
+    users = load_json(USER_FILE, {})
+    mods = load_json(MOD_FILE, [])
+    bans = load_json(BAN_FILE, {})
+    mutes = load_json(MUTE_FILE, [])
+    slow = load_json(SLOWMODE_FILE, {})
+    locked = load_json(LOCKED_FILE, {"status": False})
+
+    if username in bans:
+        return render_template("banned.html", reason=bans[username])
+
     if request.method == "POST":
+        now = time.time()
+        if locked.get("status") and username not in [ADMIN_USERNAME] + mods:
+            return "Chat is locked.", 403
+        if slow.get("seconds") and username != ADMIN_USERNAME:
+            last = slow.get(username, 0)
+            if now - last < slow["seconds"]:
+                return "You're typing too fast.", 429
+            slow[username] = now
+            save_json(SLOWMODE_FILE, slow)
+
         message = request.form["message"].strip()
-        if message:
-            if session["username"] == ADMIN_USERNAME and message.startswith(":ban"):
-                parts = message.split()
-                if len(parts) >= 3:
-                    target = parts[1]
-                    reason = " ".join(parts[2:])
-                    bans[target] = reason
-                    save_bans(bans)
-                    chat = load_chat()
-                    chat.append({"user": "System", "message": f"{target} has been banned by admin. Reason: {reason}"})
-                    save_chat(chat)
+        if not message:
+            return "", 204
+
+        def send_system(msg): chat.append({"user": "System", "message": msg})
+
+        is_admin = username == ADMIN_USERNAME
+        is_mod = username in mods
+        def is_privileged(): return is_admin or is_mod
+
+        # Commands
+        if message.startswith(":"):
+            parts = message.split()
+            cmd = parts[0].lower()
+            args = parts[1:]
+
+            if is_admin:
+                if cmd == ":ban" and len(args) >= 2:
+                    bans[args[0]] = " ".join(args[1:])
+                    send_system(f"{args[0]} was banned: {' '.join(args[1:])}")
+                    save_json(BAN_FILE, bans)
+
+                elif cmd == ":unban" and len(args) == 1:
+                    bans.pop(args[0], None)
+                    send_system(f"{args[0]} was unbanned.")
+                    save_json(BAN_FILE, bans)
+
+                elif cmd == ":clear":
+                    save_json(CHAT_LOG, [])
                     return "", 204
-            chat = load_chat()
-            chat.append({"user": session["username"], "message": message})
-            save_chat(chat)
+
+                elif cmd == ":mod" and len(args) == 1:
+                    if args[0] not in mods:
+                        mods.append(args[0])
+                        save_json(MOD_FILE, mods)
+                        send_system(f"{args[0]} is now a mod.")
+
+                elif cmd == ":unmod" and len(args) == 1:
+                    if args[0] in mods:
+                        mods.remove(args[0])
+                        save_json(MOD_FILE, mods)
+                        send_system(f"{args[0]} is no longer a mod.")
+
+                elif cmd == ":bans":
+                    send_system(f"Banned users: {', '.join(bans.keys()) or 'None'}")
+
+                elif cmd == ":logs":
+                    for msg in chat[-10:]:
+                        send_system(f"{msg['user']}: {msg['message']}")
+
+                elif cmd == ":lockchat":
+                    locked["status"] = True
+                    save_json(LOCKED_FILE, locked)
+                    send_system("Chat locked.")
+
+                elif cmd == ":unlockchat":
+                    locked["status"] = False
+                    save_json(LOCKED_FILE, locked)
+                    send_system("Chat unlocked.")
+
+                elif cmd == ":slowmode" and len(args) == 1:
+                    try:
+                        seconds = int(args[0])
+                        slow["seconds"] = seconds
+                        save_json(SLOWMODE_FILE, slow)
+                        send_system(f"Slowmode set to {seconds}s.")
+                    except:
+                        send_system("Invalid slowmode.")
+
+            if is_privileged():
+                if cmd == ":mute" and len(args) == 1:
+                    if args[0] not in mutes:
+                        mutes.append(args[0])
+                        save_json(MUTE_FILE, mutes)
+                        send_system(f"{args[0]} was muted.")
+
+                elif cmd == ":unmute" and len(args) == 1:
+                    if args[0] in mutes:
+                        mutes.remove(args[0])
+                        save_json(MUTE_FILE, mutes)
+                        send_system(f"{args[0]} was unmuted.")
+
+                elif cmd == ":kick" and len(args) == 1:
+                    bans[args[0]] = "(Kicked)"
+                    save_json(BAN_FILE, bans)
+                    send_system(f"{args[0]} was kicked.")
+
+            # Fun
+            if cmd == ":roll":
+                send_system(f"{username} rolled {random.randint(1, 100)}")
+            elif cmd == ":flip":
+                send_system(f"{username} flipped {'Heads' if random.randint(0,1)==1 else 'Tails'}")
+            elif cmd == ":8ball":
+                ball = random.choice(["Yes", "No", "Maybe", "Definitely", "Absolutely not", "Try again later"])
+                send_system(f"🎱 {ball}")
+            elif cmd == ":say" and args:
+                send_system(" ".join(args))
+
+            save_json(CHAT_LOG, chat)
+            return "", 204
+
+        if username in mutes:
+            return "", 204  # muted users can't speak
+
+        chat.append({"user": username, "message": message})
+        save_json(CHAT_LOG, chat)
         return "", 204
-    return render_template("index.html", username=session["username"])
+
+    return render_template("index.html", username=username)
 
 @app.route("/messages")
 def messages():
     if "username" not in session:
         return "", 403
-    return json.dumps(load_chat())
+    return json.dumps(load_json(CHAT_LOG, []))
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -107,11 +204,11 @@ def signup():
         if username == ADMIN_USERNAME:
             return "You cannot create an admin account."
         password = request.form["password"]
-        users = load_users()
+        users = load_json(USER_FILE, {})
         if username in users:
             return "Username already exists."
         users[username] = hash_password(password)
-        save_users(users)
+        save_json(USER_FILE, users)
         session["username"] = username
         return redirect("/")
     return render_template("signup.html")
@@ -121,7 +218,7 @@ def login():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
-        users = load_users()
+        users = load_json(USER_FILE, {})
         if username in users and users[username] == hash_password(password):
             if username == ADMIN_USERNAME:
                 code = str(random.randint(100000, 999999))
@@ -166,13 +263,6 @@ def logout():
     session.pop("username", None)
     session.pop("pending", None)
     return render_template("logout.html")
-
-@app.route("/clear", methods=["POST"])
-def clear_chat():
-    if session.get("username") == ADMIN_USERNAME:
-        save_chat([])
-        return "Chat cleared", 200
-    return "Unauthorized", 403
 
 @app.errorhandler(404)
 def not_found(e):
