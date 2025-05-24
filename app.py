@@ -1,5 +1,5 @@
-from flask import Flask, render_template, request, redirect, session, make_response
-import os, json, hashlib, smtplib, random
+from flask import Flask, render_template, request, redirect, session, make_response, jsonify
+import os, json, hashlib, smtplib, random, time
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = "changeme-secret"
@@ -8,8 +8,9 @@ CHAT_LOG = "chatlog.json"
 USER_FILE = "users.json"
 BAN_FILE = "banned.json"
 VERIF_CODES = {}
+VERIF_TIMES = {}
 ADMIN_USERNAME = "admin"
-ADMIN_EMAIL = "rawpok@icloud.com"  # Replace with real email
+ADMIN_EMAIL = "rawpok@icloud.com"
 
 # -- Data Loading --
 def load_chat():
@@ -46,7 +47,7 @@ def hash_password(pwd):
     return hashlib.sha256(pwd.encode()).hexdigest()
 
 def send_verification_code(code):
-    print(f"Verification code (simulated): {code}")  # Replace with real email logic
+    print(f"Verification code sent to {ADMIN_EMAIL}: {code}")  # Simulated email
 
 # -- Ensure default admin account always exists --
 users = load_users()
@@ -116,6 +117,7 @@ def login():
             if username == ADMIN_USERNAME:
                 code = str(random.randint(100000, 999999))
                 VERIF_CODES[username] = code
+                VERIF_TIMES[username] = time.time()
                 send_verification_code(code)
                 session["pending"] = username
                 return redirect("/verify")
@@ -134,7 +136,21 @@ def verify():
             session["username"] = session.pop("pending")
             return redirect("/")
         return "Incorrect verification code."
-    return "Enter verification code sent to your admin email."
+    return render_template("verify.html")
+
+@app.route("/resend", methods=["POST"])
+def resend():
+    user = session.get("pending")
+    if user != ADMIN_USERNAME:
+        return jsonify({"error": "Not allowed"}), 403
+    now = time.time()
+    if user in VERIF_TIMES and now - VERIF_TIMES[user] < 30:
+        return jsonify({"error": "Please wait before resending."}), 429
+    code = str(random.randint(100000, 999999))
+    VERIF_CODES[user] = code
+    VERIF_TIMES[user] = now
+    send_verification_code(code)
+    return jsonify({"success": True})
 
 @app.route("/logout")
 def logout():
@@ -154,5 +170,4 @@ def not_found(e):
     return render_template("404.html"), 404
 
 if __name__ == "__main__":
-    import os
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
