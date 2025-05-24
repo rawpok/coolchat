@@ -43,13 +43,13 @@ def send_verification_code(code):
     try:
         msg = MIMEText(f"Your admin verification code is: {code}")
         msg["Subject"] = "Admin Login Code"
-        msg["From"] = "coolchat.noreply@gmail.com"
+        msg["From"] = "destynp329@gmail.com"
         msg["To"] = ADMIN_EMAIL
 
         print("[EMAIL] Connecting to SMTP...")
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             print("[EMAIL] Logging in...")
-            server.login("coolchat.noreply@gmail.com", "jjievghapfvxoutf")  # No spaces
+            server.login("destynp329@gmail.com", "khblnzbpqcbnkbab")  # No spaces
             print("[EMAIL] Sending message...")
             server.sendmail(msg["From"], [msg["To"]], msg.as_string())
             print("[EMAIL] Message sent.")
