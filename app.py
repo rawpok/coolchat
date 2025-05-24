@@ -37,7 +37,7 @@ def hash_password(pwd):
 def send_verification_code(code):
     msg = MIMEText(f"Your admin verification code is: {code}")
     msg["Subject"] = "Admin Login Code"
-    msg["From"] = "destynp329@gmail.com"
+    msg["From"] = "coolchat.noreply@gmail.com"
     msg["To"] = ADMIN_EMAIL
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
