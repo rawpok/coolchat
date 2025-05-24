@@ -1,4 +1,5 @@
-# Revert to slur filter version with fixed app password and email integration
+# Full app.py with slur filter, Gmail verification via coolchat.noreply@gmail.com, and debug logging for SMTP errors
+
 import os, json, hashlib, smtplib, random, time, re
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
 from email.mime.text import MIMEText
@@ -39,16 +40,21 @@ def contains_slur(text):
     return any(re.search(rf"\b{re.escape(word)}\b", text, re.IGNORECASE) for word in SLURS)
 
 def send_verification_code(code):
-    msg = MIMEText(f"Your admin verification code is: {code}")
-    msg["Subject"] = "Admin Login Code"
-    msg["From"] = "coolchat.noreply@gmail.com"
-    msg["To"] = ADMIN_EMAIL
     try:
+        msg = MIMEText(f"Your admin verification code is: {code}")
+        msg["Subject"] = "Admin Login Code"
+        msg["From"] = "coolchat.noreply@gmail.com"
+        msg["To"] = ADMIN_EMAIL
+
+        print("[EMAIL] Connecting to SMTP...")
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login("coolchat.noreply@gmail.com", "psuqysvbgafajlii")  # Remove spaces in password
+            print("[EMAIL] Logging in...")
+            server.login("coolchat.noreply@gmail.com", "psuqysvbgafajlii")  # No spaces
+            print("[EMAIL] Sending message...")
             server.sendmail(msg["From"], [msg["To"]], msg.as_string())
+            print("[EMAIL] Message sent.")
     except Exception as e:
-        print("Email error:", e)
+        print("❌ EMAIL ERROR:", type(e).__name__, str(e))
 
 users = load_json(USER_FILE, {})
 if ADMIN_USERNAME not in users:
@@ -95,7 +101,7 @@ def signup():
         password = request.form["password"]
         users = load_json(USER_FILE, {})
         if username == ADMIN_USERNAME or username in users:
-            return "Username not allowed or exists."
+            return "Username not allowed or already exists."
         users[username] = hash_password(password)
         save_json(USER_FILE, users)
         session["username"] = username
