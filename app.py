@@ -1,8 +1,8 @@
-# Updated app.py with:
-# - Permanent admin account: doodiebutthole3
-# - Skips email verification for doodiebutthole3
-# - Retains email verification for "admin"
-# - Full admin powers for both accounts
+# Final version with:
+# - doodiebutthole3 account always exists
+# - skips verification
+# - chat shows doodiebutthole3 as "rawpok"
+# - "rawpok" is not a real account
 
 import os, json, hashlib, smtplib, random, time, re
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
@@ -25,7 +25,6 @@ VERIF_TIMES = {}
 ADMIN_USERNAME = "admin"
 ALT_ADMIN = "doodiebutthole3"
 ADMIN_EMAIL = "rawpok@icloud.com"
-
 EMAIL_FROM = "coolchat.noreply@gmail.com"
 EMAIL_PASS = "jjievghapfvxout"
 
@@ -53,7 +52,6 @@ def send_verification_code(code):
         msg["Subject"] = "Admin Login Code"
         msg["From"] = EMAIL_FROM
         msg["To"] = ADMIN_EMAIL
-
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(EMAIL_FROM, EMAIL_PASS)
             server.sendmail(msg["From"], [msg["To"]], msg.as_string())
@@ -65,6 +63,8 @@ if ADMIN_USERNAME not in users:
     users[ADMIN_USERNAME] = hash_password("admin")
 if ALT_ADMIN not in users:
     users[ALT_ADMIN] = hash_password("admin")
+if "rawpok" in users:
+    del users["rawpok"]  # ensure rawpok can’t be created
 save_json(USER_FILE, users)
 
 @app.before_request
@@ -89,7 +89,8 @@ def index():
         message = request.form["message"].strip()
         if not message or username in mutes or contains_slur(message):
             return "", 204
-        chat.append({"user": username, "message": message})
+        display_name = "rawpok" if username == ALT_ADMIN else username
+        chat.append({"user": display_name, "message": message})
         save_json(CHAT_LOG, chat)
         return "", 204
     return render_template("index.html", username=username)
@@ -106,7 +107,7 @@ def signup():
         username = request.form["username"].strip()
         password = request.form["password"]
         users = load_json(USER_FILE, {})
-        if username in [ADMIN_USERNAME, ALT_ADMIN] or username in users:
+        if username in [ADMIN_USERNAME, ALT_ADMIN, "rawpok"] or username in users:
             return "Username not allowed or already exists."
         users[username] = hash_password(password)
         save_json(USER_FILE, users)
