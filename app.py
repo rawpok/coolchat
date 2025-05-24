@@ -1,8 +1,6 @@
-# Full app.py with slur filter, Gmail verification via coolchat.noreply@gmail.com, and debug logging for SMTP errors
-
-import os, json, hashlib, smtplib, random, time, re
+# Updated app.py: no email, admin PIN with time-based logic, full authentication flow
+import os, json, hashlib, random, time, re
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
-from email.mime.text import MIMEText
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = "changeme-secret"
@@ -19,9 +17,11 @@ COOKIES_FILE = "cookies.json"
 VERIF_CODES = {}
 VERIF_TIMES = {}
 ADMIN_USERNAME = "admin"
-ADMIN_EMAIL = "rawpok@icloud.com"
+ADMIN_EMAIL = "rawpok@icloud.com"  # still used in variables
 
-SLURS = ["nigger", "faggot", "retard", "penis", "fuck", "cock", "shit"]
+SLURS = ["nigger", "faggot", "retard", "tranny", "coon", "chink", "kike"]
+
+PIN_ROTATION = ["72018", "32912", "1763"]
 
 def load_json(file, default):
     if not os.path.exists(file):
@@ -39,22 +39,9 @@ def hash_password(pwd):
 def contains_slur(text):
     return any(re.search(rf"\b{re.escape(word)}\b", text, re.IGNORECASE) for word in SLURS)
 
-def send_verification_code(code):
-    try:
-        msg = MIMEText(f"Your admin verification code is: {code}")
-        msg["Subject"] = "Admin Login Code"
-        msg["From"] = "destynp329@gmail.com"
-        msg["To"] = ADMIN_EMAIL
-
-        print("[EMAIL] Connecting to SMTP...")
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            print("[EMAIL] Logging in...")
-            server.login("destynp329@gmail.com", "khblnzbpqcbnkbab")  # No spaces
-            print("[EMAIL] Sending message...")
-            server.sendmail(msg["From"], [msg["To"]], msg.as_string())
-            print("[EMAIL] Message sent.")
-    except Exception as e:
-        print("❌ EMAIL ERROR:", type(e).__name__, str(e))
+def get_current_pin():
+    index = int(time.time() / 30) % len(PIN_ROTATION)
+    return PIN_ROTATION[index]
 
 users = load_json(USER_FILE, {})
 if ADMIN_USERNAME not in users:
@@ -119,15 +106,13 @@ def login():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
+        pin = request.form.get("adminpin", "").strip()
         users = load_json(USER_FILE, {})
+
         if username in users and users[username] == hash_password(password):
             if username == ADMIN_USERNAME:
-                code = str(random.randint(100000, 999999))
-                VERIF_CODES[username] = code
-                VERIF_TIMES[username] = time.time()
-                send_verification_code(code)
-                session["pending"] = username
-                return redirect("/verify")
+                if pin != get_current_pin():
+                    return redirect("/verify")
             session["username"] = username
             token = str(random.randint(10000000, 99999999))
             cookies = load_json(COOKIES_FILE, {})
@@ -141,21 +126,19 @@ def login():
 
 @app.route("/verify", methods=["GET", "POST"])
 def verify():
-    if "pending" not in session:
-        return redirect("/login")
+    correct_pin = get_current_pin()
     if request.method == "POST":
-        code = request.form["code"].strip()
-        if VERIF_CODES.get(session["pending"]) == code:
-            username = session.pop("pending")
-            session["username"] = username
+        input_pin = request.form["adminpin"].strip()
+        if input_pin == correct_pin:
+            session["username"] = "admin"
             token = str(random.randint(10000000, 99999999))
             cookies = load_json(COOKIES_FILE, {})
-            cookies[token] = username
+            cookies[token] = "admin"
             save_json(COOKIES_FILE, cookies)
             resp = make_response(redirect("/"))
             resp.set_cookie("login_token", token, max_age=60*60*24*30)
             return resp
-        return "Incorrect code."
+        return "Wrong PIN."
     return render_template("verify.html")
 
 @app.route("/logout")
