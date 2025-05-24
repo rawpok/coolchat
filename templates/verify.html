@@ -2,8 +2,37 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Admin Verification</title>
+  <title>Verify Admin</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    let waitTime = 30;
+
+    function startCooldown() {
+      const btn = document.getElementById("resendBtn");
+      btn.disabled = true;
+      const interval = setInterval(() => {
+        waitTime--;
+        btn.textContent = "Resend (" + waitTime + ")";
+        if (waitTime <= 0) {
+          btn.disabled = false;
+          btn.textContent = "Resend";
+          clearInterval(interval);
+        }
+      }, 1000);
+    }
+
+    function resendCode() {
+      fetch("/resend", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            startCooldown();
+          } else {
+            alert(data.error);
+          }
+        });
+    }
+  </script>
 </head>
 <body>
   <div class="chat-wrapper">
@@ -11,10 +40,11 @@
       <h1>🔐 Admin Verification</h1>
       <p class="subhead">Enter the 6-digit code sent to your admin email.</p>
     </header>
-    <form method="POST" class="chat-form" style="margin-top: 20px;">
-      <input type="text" name="code" placeholder="6-digit code" required autocomplete="off">
+    <form method="POST" class="chat-form">
+      <input type="text" name="code" placeholder="Enter code" required>
       <button type="submit">Verify</button>
     </form>
+    <button id="resendBtn" onclick="resendCode()" style="margin-top: 20px;">Resend</button>
   </div>
 </body>
 </html>
