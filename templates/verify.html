@@ -1,17 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Admin PIN</title>
+  <title>Admin Verification</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .chat-wrapper {
+      max-width: 400px;
+      margin: 100px auto;
+      background: #1a1a1a;
+      padding: 20px;
+      border-radius: 8px;
+      color: white;
+    }
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+      border: none;
+    }
+    button[disabled] {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    .timer {
+      font-size: 14px;
+      margin-top: 10px;
+      opacity: 0.6;
+    }
+  </style>
 </head>
 <body>
   <div class="chat-wrapper">
-    <h2>🔐 Admin Access Required</h2>
+    <h2>🔐 Admin Verification</h2>
+    <p>A 6-digit code was sent to your email.</p>
     <form method="POST">
-      <input type="password" name="adminpin" placeholder="Enter Admin PIN" required>
+      <input type="text" name="code" placeholder="Enter Code" required>
       <button type="submit">Verify</button>
     </form>
-    <p style="font-size: 12px; opacity: 0.6;">PIN changes every 30 seconds</p>
+
+    <div class="timer">
+      Resend available in <span id="countdown">30</span> seconds
+    </div>
+    <form id="resendForm" method="POST" action="/resend">
+      <button type="submit" id="resendBtn" disabled>Resend Code</button>
+    </form>
   </div>
+
+  <script>
+    let countdown = 30;
+    const countdownSpan = document.getElementById("countdown");
+    const resendBtn = document.getElementById("resendBtn");
+
+    const interval = setInterval(() => {
+      countdown--;
+      countdownSpan.textContent = countdown;
+      if (countdown <= 0) {
+        clearInterval(interval);
+        resendBtn.disabled = false;
+        countdownSpan.textContent = "0";
+      }
+    }, 1000);
+  </script>
 </body>
 </html>
