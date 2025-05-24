@@ -6,7 +6,9 @@ app.secret_key = "changeme-secret"
 
 CHAT_LOG = "chatlog.json"
 USER_FILE = "users.json"
+BAN_FILE = "banned.json"
 ADMIN_USERNAME = "admin"
+ALLOWED_ADMIN_IPS = ["192.168.1.179"]
 
 # -- Data Loading --
 def load_chat():
@@ -29,6 +31,16 @@ def save_users(users):
     with open(USER_FILE, "w") as f:
         json.dump(users, f)
 
+def load_bans():
+    if not os.path.exists(BAN_FILE):
+        return {}
+    with open(BAN_FILE, "r") as f:
+        return json.load(f)
+
+def save_bans(bans):
+    with open(BAN_FILE, "w") as f:
+        json.dump(bans, f)
+
 def hash_password(pwd):
     return hashlib.sha256(pwd.encode()).hexdigest()
 
@@ -41,9 +53,25 @@ if not os.path.exists(USER_FILE):
 def index():
     if "username" not in session:
         return redirect("/login")
+
+    bans = load_bans()
+    if session["username"] in bans:
+        return render_template("banned.html", reason=bans[session["username"]])
+
     if request.method == "POST":
         message = request.form["message"].strip()
         if message:
+            if session["username"] == ADMIN_USERNAME and message.startswith(":ban"):
+                parts = message.split()
+                if len(parts) >= 3:
+                    target = parts[1]
+                    reason = " ".join(parts[2:])
+                    bans[target] = reason
+                    save_bans(bans)
+                    chat = load_chat()
+                    chat.append({"user": "System", "message": f"{target} has been banned by admin. Reason: {reason}"})
+                    save_chat(chat)
+                    return "", 204
             chat = load_chat()
             chat.append({"user": session["username"], "message": message})
             save_chat(chat)
@@ -76,6 +104,10 @@ def login():
         username = request.form["username"].strip()
         password = request.form["password"]
         users = load_users()
+        if username == ADMIN_USERNAME:
+            user_ip = request.remote_addr
+            if user_ip not in ALLOWED_ADMIN_IPS:
+                return "Access denied: your IP is not whitelisted for admin."
         if username in users and users[username] == hash_password(password):
             session["username"] = username
             return redirect("/")
@@ -94,5 +126,10 @@ def clear_chat():
         return "Chat cleared", 200
     return "Unauthorized", 403
 
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("404.html"), 404
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000)
+    import os
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
