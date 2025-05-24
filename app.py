@@ -1,6 +1,7 @@
-import os, json, hashlib, smtplib, random, time
-from email.mime.text import MIMEText
+# Revert to slur filter version with fixed app password and email integration
+import os, json, hashlib, smtplib, random, time, re
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
+from email.mime.text import MIMEText
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = "changeme-secret"
@@ -19,7 +20,7 @@ VERIF_TIMES = {}
 ADMIN_USERNAME = "admin"
 ADMIN_EMAIL = "rawpok@icloud.com"
 
-# -- Utility Functions --
+SLURS = ["nigger", "faggot", "retard", "tranny", "coon", "chink", "kike"]
 
 def load_json(file, default):
     if not os.path.exists(file):
@@ -34,6 +35,9 @@ def save_json(file, data):
 def hash_password(pwd):
     return hashlib.sha256(pwd.encode()).hexdigest()
 
+def contains_slur(text):
+    return any(re.search(rf"\b{re.escape(word)}\b", text, re.IGNORECASE) for word in SLURS)
+
 def send_verification_code(code):
     msg = MIMEText(f"Your admin verification code is: {code}")
     msg["Subject"] = "Admin Login Code"
@@ -41,30 +45,48 @@ def send_verification_code(code):
     msg["To"] = ADMIN_EMAIL
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login("coolchat.noreply@gmail.com", "psuq ysvb gafa jlii")  # Replace with real password
+            server.login("coolchat.noreply@gmail.com", "psuqysvbgafajlii")  # Remove spaces in password
             server.sendmail(msg["From"], [msg["To"]], msg.as_string())
     except Exception as e:
-        print("Email failed:", e)
+        print("Email error:", e)
 
-# Ensure admin account exists
 users = load_json(USER_FILE, {})
 if ADMIN_USERNAME not in users:
     users[ADMIN_USERNAME] = hash_password("admin")
     save_json(USER_FILE, users)
 
 @app.before_request
-def check_cookie_login():
+def cookie_login():
     if "username" not in session:
         cookies = load_json(COOKIES_FILE, {})
-        user_cookie = request.cookies.get("login_token")
-        if user_cookie in cookies:
-            session["username"] = cookies[user_cookie]
+        token = request.cookies.get("login_token")
+        if token in cookies:
+            session["username"] = cookies[token]
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if "username" not in session:
         return redirect("/login")
-    return render_template("index.html", username=session["username"])
+    username = session["username"]
+    chat = load_json(CHAT_LOG, [])
+    bans = load_json(BAN_FILE, {})
+    mutes = load_json(MUTE_FILE, [])
+    if username in bans:
+        return render_template("banned.html", reason=bans[username])
+    if request.method == "POST":
+        message = request.form["message"].strip()
+        if not message or username in mutes or contains_slur(message):
+            return "", 204
+        chat.append({"user": username, "message": message})
+        save_json(CHAT_LOG, chat)
+        return "", 204
+    return render_template("index.html", username=username)
+
+@app.route("/messages")
+def messages():
+    if "username" not in session:
+        return "", 403
+    return json.dumps(load_json(CHAT_LOG, []))
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -73,7 +95,7 @@ def signup():
         password = request.form["password"]
         users = load_json(USER_FILE, {})
         if username == ADMIN_USERNAME or username in users:
-            return "Invalid or existing username."
+            return "Username not allowed or exists."
         users[username] = hash_password(password)
         save_json(USER_FILE, users)
         session["username"] = username
@@ -132,8 +154,7 @@ def verify():
 
 @app.route("/logout")
 def logout():
-    session.pop("username", None)
-    session.pop("pending", None)
+    session.clear()
     resp = make_response(redirect("/login"))
     resp.set_cookie("login_token", "", expires=0)
     return resp
