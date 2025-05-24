@@ -1,5 +1,5 @@
-from flask import Flask, render_template, request, redirect, session
-import os, json, hashlib
+from flask import Flask, render_template, request, redirect, session, make_response
+import os, json, hashlib, smtplib, random
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = "changeme-secret"
@@ -7,8 +7,9 @@ app.secret_key = "changeme-secret"
 CHAT_LOG = "chatlog.json"
 USER_FILE = "users.json"
 BAN_FILE = "banned.json"
+VERIF_CODES = {}
 ADMIN_USERNAME = "admin"
-ALLOWED_ADMIN_IPS = ["74.75.68.144"]
+ADMIN_EMAIL = "rawpok@icloud.com"  # Replace with real email
 
 # -- Data Loading --
 def load_chat():
@@ -44,9 +45,14 @@ def save_bans(bans):
 def hash_password(pwd):
     return hashlib.sha256(pwd.encode()).hexdigest()
 
-# -- Initialize default admin account --
-if not os.path.exists(USER_FILE):
-    save_users({ADMIN_USERNAME: hash_password("admin")})
+def send_verification_code(code):
+    print(f"Verification code (simulated): {code}")  # Replace with real email logic
+
+# -- Ensure default admin account always exists --
+users = load_users()
+if ADMIN_USERNAME not in users:
+    users[ADMIN_USERNAME] = hash_password("admin")
+    save_users(users)
 
 # -- Routes --
 @app.route("/", methods=["GET", "POST"])
@@ -88,6 +94,8 @@ def messages():
 def signup():
     if request.method == "POST":
         username = request.form["username"].strip()
+        if username == ADMIN_USERNAME:
+            return "You cannot create an admin account."
         password = request.form["password"]
         users = load_users()
         if username in users:
@@ -104,19 +112,34 @@ def login():
         username = request.form["username"].strip()
         password = request.form["password"]
         users = load_users()
-        if username == ADMIN_USERNAME:
-            user_ip = request.remote_addr
-            if user_ip not in ALLOWED_ADMIN_IPS:
-                return "Access denied: your IP is not whitelisted for admin."
         if username in users and users[username] == hash_password(password):
+            if username == ADMIN_USERNAME:
+                code = str(random.randint(100000, 999999))
+                VERIF_CODES[username] = code
+                send_verification_code(code)
+                session["pending"] = username
+                return redirect("/verify")
             session["username"] = username
             return redirect("/")
         return "Invalid username or password."
     return render_template("login.html")
 
+@app.route("/verify", methods=["GET", "POST"])
+def verify():
+    if "pending" not in session:
+        return redirect("/login")
+    if request.method == "POST":
+        code = request.form["code"].strip()
+        if VERIF_CODES.get(session["pending"]) == code:
+            session["username"] = session.pop("pending")
+            return redirect("/")
+        return "Incorrect verification code."
+    return "Enter verification code sent to your admin email."
+
 @app.route("/logout")
 def logout():
     session.pop("username", None)
+    session.pop("pending", None)
     return render_template("logout.html")
 
 @app.route("/clear", methods=["POST"])
