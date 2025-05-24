@@ -21,7 +21,7 @@ VERIF_TIMES = {}
 ADMIN_USERNAME = "admin"
 ADMIN_EMAIL = "rawpok@icloud.com"
 
-SLURS = ["nigger", "faggot", "retard", "tranny", "coon", "chink", "kike"]
+SLURS = ["nigger", "faggot", "retard", "penis", "fuck", "cock", "shit"]
 
 def load_json(file, default):
     if not os.path.exists(file):
@@ -49,7 +49,7 @@ def send_verification_code(code):
         print("[EMAIL] Connecting to SMTP...")
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             print("[EMAIL] Logging in...")
-            server.login("coolchat.noreply@gmail.com", "psuqysvbgafajlii")  # No spaces
+            server.login("coolchat.noreply@gmail.com", "jjievghapfvxoutf")  # No spaces
             print("[EMAIL] Sending message...")
             server.sendmail(msg["From"], [msg["To"]], msg.as_string())
             print("[EMAIL] Message sent.")
