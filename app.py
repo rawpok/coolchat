@@ -1,7 +1,8 @@
-# Finalized app.py with:
-# ✅ Email verification (re-added)
-# ✅ No favicon.ico reference
-# ✅ Working admin login flow
+# Updated app.py with:
+# - Permanent admin account: doodiebutthole3
+# - Skips email verification for doodiebutthole3
+# - Retains email verification for "admin"
+# - Full admin powers for both accounts
 
 import os, json, hashlib, smtplib, random, time, re
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
@@ -22,12 +23,13 @@ COOKIES_FILE = "cookies.json"
 VERIF_CODES = {}
 VERIF_TIMES = {}
 ADMIN_USERNAME = "admin"
+ALT_ADMIN = "doodiebutthole3"
 ADMIN_EMAIL = "rawpok@icloud.com"
 
 EMAIL_FROM = "coolchat.noreply@gmail.com"
-EMAIL_PASS = "jjievghapfvxoutf"  # Gmail App Password
+EMAIL_PASS = "jjievghapfvxout"
 
-SLURS = ["nigger", "faggot", "retard", "fuck", "shit", "dick", "cock"]
+SLURS = ["nigger", "faggot", "retard", "tranny", "coon", "chink", "kike"]
 
 def load_json(file, default):
     if not os.path.exists(file):
@@ -61,7 +63,9 @@ def send_verification_code(code):
 users = load_json(USER_FILE, {})
 if ADMIN_USERNAME not in users:
     users[ADMIN_USERNAME] = hash_password("admin")
-    save_json(USER_FILE, users)
+if ALT_ADMIN not in users:
+    users[ALT_ADMIN] = hash_password("admin")
+save_json(USER_FILE, users)
 
 @app.before_request
 def cookie_login():
@@ -102,7 +106,7 @@ def signup():
         username = request.form["username"].strip()
         password = request.form["password"]
         users = load_json(USER_FILE, {})
-        if username == ADMIN_USERNAME or username in users:
+        if username in [ADMIN_USERNAME, ALT_ADMIN] or username in users:
             return "Username not allowed or already exists."
         users[username] = hash_password(password)
         save_json(USER_FILE, users)
@@ -130,14 +134,15 @@ def login():
                 send_verification_code(code)
                 session["pending"] = username
                 return redirect("/verify")
-            session["username"] = username
-            token = str(random.randint(10000000, 99999999))
-            cookies = load_json(COOKIES_FILE, {})
-            cookies[token] = username
-            save_json(COOKIES_FILE, cookies)
-            resp = make_response(redirect("/"))
-            resp.set_cookie("login_token", token, max_age=60*60*24*30)
-            return resp
+            else:
+                session["username"] = username
+                token = str(random.randint(10000000, 99999999))
+                cookies = load_json(COOKIES_FILE, {})
+                cookies[token] = username
+                save_json(COOKIES_FILE, cookies)
+                resp = make_response(redirect("/"))
+                resp.set_cookie("login_token", token, max_age=60*60*24*30)
+                return resp
         return "Invalid login."
     return render_template("login.html")
 
