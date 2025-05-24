@@ -54,7 +54,7 @@ def send_verification_code(code):
     msg["To"] = ADMIN_EMAIL
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login("destynp329@gmail.com", "YOUR_APP_PASSWORD")  # Replace with Gmail App Password
+            server.login("destynp329@gmail.com", "khbl nzbp qcbn kbab")  # Replace with Gmail App Password
             server.sendmail(msg["From"], [msg["To"]], msg.as_string())
         print(f"Verification code sent to {ADMIN_EMAIL}")
     except Exception as e:
