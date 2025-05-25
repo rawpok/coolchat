@@ -1,7 +1,7 @@
-# Final version of app.py that ensures:
-# - Messages are saved and displayed
-# - Chat log is appended properly
-# - Includes previous admin/mod/login/censorship setup
+# Full updated app.py with:
+# - Only admins can trigger a 404
+# - Media support reminder (static folder)
+# - All previous functionality preserved
 
 import os, json, hashlib, smtplib, random, time, re, threading
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
@@ -27,14 +27,12 @@ ADMIN_EMAIL = "rawpok@icloud.com"
 EMAIL_FROM = "coolchat.noreply@gmail.com"
 EMAIL_PASS = "jjievghapfvxout"
 
-# Swear and slur filter list
 SWEAR_WORDS = [
     "fuck", "shit", "bitch", "asshole", "cunt", "fag", "faggot", "nigger",
     "retard", "tranny", "dick", "cock", "pussy", "bastard", "slut", "whore",
     "kike", "coon", "chink", "nigga", "fgt", "a55", "sh1t", "f@ck", "f*ck"
 ]
 
-# Utility functions
 def clean_message(text):
     for word in SWEAR_WORDS:
         text = re.sub(rf"\b{re.escape(word)}\b", "#" * len(word), text, flags=re.IGNORECASE)
@@ -77,7 +75,6 @@ def send_verification_code(code):
     except Exception as e:
         print("EMAIL ERROR:", type(e).__name__, str(e))
 
-# Ensure admin and alt account exist
 users = load_json(USER_FILE, {})
 if not isinstance(users, dict): users = {}
 if ADMIN_USERNAME not in users:
@@ -212,6 +209,14 @@ def logout():
     resp = make_response(redirect("/login"))
     resp.set_cookie("login_token", "", expires=0)
     return resp
+
+@app.route("/trigger404")
+def trigger404():
+    if "username" not in session:
+        return redirect("/login")
+    if session["username"] not in [ADMIN_USERNAME, ALT_ADMIN]:
+        return "You are not authorized to use this.", 403
+    return render_template("404.html"), 404
 
 @app.errorhandler(404)
 def not_found(e):
