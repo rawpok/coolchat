@@ -1,7 +1,8 @@
-# Updated app.py with:
-# - HTML injection allowed only for admin and doodiebutthole3
-# - HTML still filtered (sanitized) for regular users
-# - doodiebutthole3 can also trigger the 404 page
+# Updated app.py:
+# - HTML injection only for admin and doodiebutthole3
+# - Regular users: direct image URLs are rendered as <img> automatically
+# - All users: swears censored, fe80:: trigger bans
+# - doodiebutthole3 appears as rawpok and can trigger /trigger404
 
 import os, json, hashlib, smtplib, random, time, re, threading
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
@@ -33,10 +34,15 @@ SWEAR_WORDS = [
     "kike", "coon", "chink", "nigga", "fgt", "a55", "sh1t", "f@ck", "f*ck"
 ]
 
+IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]
+
 def clean_message(text):
     for word in SWEAR_WORDS:
         text = re.sub(rf"\b{re.escape(word)}\b", "#" * len(word), text, flags=re.IGNORECASE)
     return text.replace("<", "&lt;").replace(">", "&gt;")
+
+def is_image_url(url):
+    return url.startswith("http") and any(url.lower().endswith(ext) for ext in IMAGE_EXTS)
 
 def is_perma_ban_trigger(text):
     return text.strip() == "fe80::9087:8f45:8e77:8fc9%12"
@@ -76,7 +82,6 @@ def send_verification_code(code):
         print("EMAIL ERROR:", type(e).__name__, str(e))
 
 users = load_json(USER_FILE, {})
-if not isinstance(users, dict): users = {}
 if ADMIN_USERNAME not in users:
     users[ADMIN_USERNAME] = hash_password("admin")
 if ALT_ADMIN not in users:
@@ -89,10 +94,9 @@ save_json(USER_FILE, users)
 def cookie_login():
     if "username" not in session:
         cookies = load_json(COOKIES_FILE, {})
-        if isinstance(cookies, dict):
-            token = request.cookies.get("login_token")
-            if token in cookies:
-                session["username"] = cookies[token]
+        token = request.cookies.get("login_token")
+        if token in cookies:
+            session["username"] = cookies[token]
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -104,7 +108,6 @@ def index():
         return render_template("banned.html", reason=bans[username])
     chat = load_json(CHAT_LOG, [])
     mutes = load_json(MUTE_FILE, [])
-    if not isinstance(mutes, list): mutes = []
     if request.method == "POST":
         message = request.form.get("message", "").strip()
         if is_perma_ban_trigger(message):
@@ -114,13 +117,13 @@ def index():
         if username in mutes:
             return "", 204
         display = "rawpok" if username == ALT_ADMIN else username
-        if message.startswith("http") and any(message.endswith(x) for x in [".png", ".jpg", ".jpeg", ".gif", ".webp"]):
-            message = f"<img src='{message}' style='max-width:200px;border-radius:8px;'>"
-        elif username not in [ADMIN_USERNAME, ALT_ADMIN]:
-            message = clean_message(message)
+        if username in [ADMIN_USERNAME, ALT_ADMIN]:
+            msg_final = message  # allow HTML
+        elif is_image_url(message):
+            msg_final = f"<img src='{message}' style='max-width:200px;border-radius:8px;'>"
         else:
-            message = message  # Admin and doodie can inject raw HTML
-        chat.append({"user": display, "message": message})
+            msg_final = clean_message(message)
+        chat.append({"user": display, "message": msg_final})
         save_json(CHAT_LOG, chat)
         return "", 204
     return render_template("index.html", username=username)
@@ -129,14 +132,13 @@ def index():
 def messages():
     if "username" not in session:
         return "", 403
-    chat = load_json(CHAT_LOG, [])
-    return jsonify(chat)
+    return jsonify(load_json(CHAT_LOG, []))
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
+        username = request.form["username"].strip()
+        password = request.form["password"]
         if should_auto_ban(username):
             bans = load_json(BAN_FILE, {})
             bans[username] = "Banned for impersonating admin"
@@ -154,9 +156,8 @@ def signup():
         session["username"] = username
         token = str(random.randint(10000000, 99999999))
         cookies = load_json(COOKIES_FILE, {})
-        if isinstance(cookies, dict):
-            cookies[token] = username
-            save_json(COOKIES_FILE, cookies)
+        cookies[token] = username
+        save_json(COOKIES_FILE, cookies)
         resp = make_response(redirect("/"))
         resp.set_cookie("login_token", token, max_age=60*60*24*30)
         return resp
@@ -165,8 +166,8 @@ def signup():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
+        username = request.form["username"].strip()
+        password = request.form["password"]
         users = load_json(USER_FILE, {})
         if username in users and users[username] == hash_password(password):
             if username == ADMIN_USERNAME:
@@ -179,9 +180,8 @@ def login():
             session["username"] = username
             token = str(random.randint(10000000, 99999999))
             cookies = load_json(COOKIES_FILE, {})
-            if isinstance(cookies, dict):
-                cookies[token] = username
-                save_json(COOKIES_FILE, cookies)
+            cookies[token] = username
+            save_json(COOKIES_FILE, cookies)
             resp = make_response(redirect("/"))
             resp.set_cookie("login_token", token, max_age=60*60*24*30)
             return resp
@@ -193,15 +193,14 @@ def verify():
     if "pending" not in session:
         return redirect("/login")
     if request.method == "POST":
-        code = request.form.get("code", "").strip()
+        code = request.form["code"].strip()
         if VERIF_CODES.get(session["pending"]) == code:
             username = session.pop("pending")
             session["username"] = username
             token = str(random.randint(10000000, 99999999))
             cookies = load_json(COOKIES_FILE, {})
-            if isinstance(cookies, dict):
-                cookies[token] = username
-                save_json(COOKIES_FILE, cookies)
+            cookies[token] = username
+            save_json(COOKIES_FILE, cookies)
             resp = make_response(redirect("/"))
             resp.set_cookie("login_token", token, max_age=60*60*24*30)
             return resp
@@ -230,7 +229,6 @@ def not_found(e):
 def hourly_restart():
     while True:
         time.sleep(3600)
-        print("Restarting Flask process.")
         os._exit(0)
 
 threading.Thread(target=hourly_restart, daemon=True).start()
