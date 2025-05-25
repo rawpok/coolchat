@@ -1,7 +1,5 @@
-# Full updated app.py with:
-# - Only admins can trigger a 404
-# - Media support reminder (static folder)
-# - All previous functionality preserved
+# Full app.py updated to support image links in chat messages
+# Displays .png, .jpg, .gif, etc. as embedded <img> in chat if pasted
 
 import os, json, hashlib, smtplib, random, time, re, threading
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
@@ -113,8 +111,11 @@ def index():
             return "", 204
         if username in mutes:
             return "", 204
-        message = clean_message(message)
         display = "rawpok" if username == ALT_ADMIN else username
+        if message.startswith("http") and any(message.endswith(x) for x in [".png", ".jpg", ".jpeg", ".gif", ".webp"]):
+            message = f"<img src='{message}' style='max-width:200px;border-radius:8px;'>"
+        else:
+            message = clean_message(message)
         chat.append({"user": display, "message": message})
         save_json(CHAT_LOG, chat)
         return "", 204
