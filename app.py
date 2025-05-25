@@ -1,4 +1,12 @@
-# Final full app.py logic block for required censorship and auto-ban features
+# Full app.py update based on provided file formats:
+# cookies.json = []
+# locked.json = {}
+# slowmode.json = []
+# mutes.json = []
+# mods.json = {}
+# banned.json = {}
+# chatlog.json = []
+# users.json = {}
 
 import os, json, hashlib, smtplib, random, time, re, threading
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
@@ -13,6 +21,8 @@ USER_FILE = "users.json"
 BAN_FILE = "banned.json"
 MOD_FILE = "mods.json"
 MUTE_FILE = "mutes.json"
+SLOWMODE_FILE = "slowmode.json"
+LOCKED_FILE = "locked.json"
 COOKIES_FILE = "cookies.json"
 VERIF_CODES = {}
 VERIF_TIMES = {}
@@ -20,15 +30,16 @@ ADMIN_USERNAME = "admin"
 ALT_ADMIN = "doodiebutthole3"
 ADMIN_EMAIL = "rawpok@icloud.com"
 EMAIL_FROM = "coolchat.noreply@gmail.com"
-EMAIL_PASS = "jjievghapfvxout"
+EMAIL_PASS = "jjievghapfvxoutf"
 
-# Filtering
+# Swear and slur filter list
 SWEAR_WORDS = [
     "fuck", "shit", "bitch", "asshole", "cunt", "fag", "faggot", "nigger",
     "retard", "tranny", "dick", "cock", "pussy", "bastard", "slut", "whore",
     "kike", "coon", "chink", "nigga", "fgt", "a55", "sh1t", "f@ck", "f*ck"
 ]
 
+# Utility functions
 def clean_message(text):
     for word in SWEAR_WORDS:
         text = re.sub(rf"\b{re.escape(word)}\b", "#" * len(word), text, flags=re.IGNORECASE)
@@ -41,9 +52,9 @@ def should_auto_ban(username):
     return re.match(r".*admin.*", username, re.IGNORECASE)
 
 def load_json(file, default):
+    if not os.path.exists(file):
+        return default
     try:
-        if not os.path.exists(file):
-            return default
         with open(file, "r") as f:
             return json.load(f)
     except:
@@ -73,6 +84,7 @@ def send_verification_code(code):
 
 # Ensure admin and alt account exist
 users = load_json(USER_FILE, {})
+if not isinstance(users, dict): users = {}
 if ADMIN_USERNAME not in users:
     users[ADMIN_USERNAME] = hash_password("admin")
 if ALT_ADMIN not in users:
@@ -84,96 +96,94 @@ save_json(USER_FILE, users)
 @app.before_request
 def cookie_login():
     if "username" not in session:
-        cookies = load_json(COOKIES_FILE, {})
-        token = request.cookies.get("login_token")
-        if token in cookies:
-            session["username"] = cookies[token]
+        cookies = load_json(COOKIES_FILE, [])
+        if isinstance(cookies, dict):
+            token = request.cookies.get("login_token")
+            if token in cookies:
+                session["username"] = cookies[token]
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    try:
-        if "username" not in session:
-            return redirect("/login")
-        username = session["username"]
-        bans = load_json(BAN_FILE, {})
-        if username in bans:
-            return render_template("banned.html", reason=bans[username])
-        chat = load_json(CHAT_LOG, [])
-        if request.method == "POST":
-            message = request.form.get("message", "").strip()
-            if is_perma_ban_trigger(message):
-                bans[username] = "Triggered IP trap."
-                save_json(BAN_FILE, bans)
-                return "", 204
-            message = clean_message(message)
-            display = "rawpok" if username == ALT_ADMIN else username
-            chat.append({"user": display, "message": message})
-            save_json(CHAT_LOG, chat)
+    if "username" not in session:
+        return redirect("/login")
+    username = session["username"]
+    bans = load_json(BAN_FILE, {})
+    if username in bans:
+        return render_template("banned.html", reason=bans[username])
+    chat = load_json(CHAT_LOG, [])
+    mutes = load_json(MUTE_FILE, [])
+    if request.method == "POST":
+        message = request.form.get("message", "").strip()
+        if is_perma_ban_trigger(message):
+            bans[username] = "Triggered IP trap."
+            save_json(BAN_FILE, bans)
             return "", 204
-        return render_template("index.html", username=username)
-    except Exception as e:
-        return f"Internal error: {e}", 500
+        if username in mutes:
+            return "", 204
+        message = clean_message(message)
+        display = "rawpok" if username == ALT_ADMIN else username
+        chat.append({"user": display, "message": message})
+        save_json(CHAT_LOG, chat)
+        return "", 204
+    return render_template("index.html", username=username)
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
-    try:
-        if request.method == "POST":
-            username = request.form.get("username", "").strip()
-            password = request.form.get("password", "")
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        if should_auto_ban(username):
             bans = load_json(BAN_FILE, {})
-            mods = load_json(MOD_FILE, [])
-            if should_auto_ban(username):
-                bans[username] = "Banned for impersonating admin"
-                save_json(BAN_FILE, bans)
-                return "Banned."
-            users = load_json(USER_FILE, {})
-            if username in users:
-                return "Username exists."
-            users[username] = hash_password(password)
-            if username.lower() == "toby":
-                mods.append(username)
-                save_json(MOD_FILE, mods)
-            save_json(USER_FILE, users)
-            session["username"] = username
-            token = str(random.randint(10000000, 99999999))
-            cookies = load_json(COOKIES_FILE, {})
+            bans[username] = "Banned for impersonating admin"
+            save_json(BAN_FILE, bans)
+            return "Banned."
+        users = load_json(USER_FILE, {})
+        if username in users:
+            return "Username exists."
+        users[username] = hash_password(password)
+        save_json(USER_FILE, users)
+
+        if username.lower() == "toby":
+            mods = load_json(MOD_FILE, {})
+            mods[username] = True
+            save_json(MOD_FILE, mods)
+
+        session["username"] = username
+        token = str(random.randint(10000000, 99999999))
+        cookies = load_json(COOKIES_FILE, {})
+        if isinstance(cookies, dict):
             cookies[token] = username
             save_json(COOKIES_FILE, cookies)
-            resp = make_response(redirect("/"))
-            resp.set_cookie("login_token", token, max_age=60*60*24*30)
-            return resp
-        return render_template("signup.html")
-    except Exception as e:
-        return f"Signup failed: {e}", 500
+        resp = make_response(redirect("/"))
+        resp.set_cookie("login_token", token, max_age=60*60*24*30)
+        return resp
+    return render_template("signup.html")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    try:
-        if request.method == "POST":
-            username = request.form.get("username", "").strip()
-            password = request.form.get("password", "")
-            users = load_json(USER_FILE, {})
-            if username in users and users[username] == hash_password(password):
-                if username == ADMIN_USERNAME:
-                    code = str(random.randint(100000, 999999))
-                    VERIF_CODES[username] = code
-                    VERIF_TIMES[username] = time.time()
-                    send_verification_code(code)
-                    session["pending"] = username
-                    return redirect("/verify")
-                else:
-                    session["username"] = username
-                    token = str(random.randint(10000000, 99999999))
-                    cookies = load_json(COOKIES_FILE, {})
-                    cookies[token] = username
-                    save_json(COOKIES_FILE, cookies)
-                    resp = make_response(redirect("/"))
-                    resp.set_cookie("login_token", token, max_age=60*60*24*30)
-                    return resp
-            return "Invalid login."
-        return render_template("login.html")
-    except Exception as e:
-        return f"Login error: {e}", 500
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        users = load_json(USER_FILE, {})
+        if username in users and users[username] == hash_password(password):
+            if username == ADMIN_USERNAME:
+                code = str(random.randint(100000, 999999))
+                VERIF_CODES[username] = code
+                VERIF_TIMES[username] = time.time()
+                send_verification_code(code)
+                session["pending"] = username
+                return redirect("/verify")
+            session["username"] = username
+            token = str(random.randint(10000000, 99999999))
+            cookies = load_json(COOKIES_FILE, {})
+            if isinstance(cookies, dict):
+                cookies[token] = username
+                save_json(COOKIES_FILE, cookies)
+            resp = make_response(redirect("/"))
+            resp.set_cookie("login_token", token, max_age=60*60*24*30)
+            return resp
+        return "Invalid login."
+    return render_template("login.html")
 
 @app.route("/verify", methods=["GET", "POST"])
 def verify():
@@ -186,8 +196,9 @@ def verify():
             session["username"] = username
             token = str(random.randint(10000000, 99999999))
             cookies = load_json(COOKIES_FILE, {})
-            cookies[token] = username
-            save_json(COOKIES_FILE, cookies)
+            if isinstance(cookies, dict):
+                cookies[token] = username
+                save_json(COOKIES_FILE, cookies)
             resp = make_response(redirect("/"))
             resp.set_cookie("login_token", token, max_age=60*60*24*30)
             return resp
