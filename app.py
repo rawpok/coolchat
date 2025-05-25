@@ -1,5 +1,7 @@
-# Full app.py updated to support image links in chat messages
-# Displays .png, .jpg, .gif, etc. as embedded <img> in chat if pasted
+# Updated app.py with:
+# - HTML injection allowed only for admin and doodiebutthole3
+# - HTML still filtered (sanitized) for regular users
+# - doodiebutthole3 can also trigger the 404 page
 
 import os, json, hashlib, smtplib, random, time, re, threading
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
@@ -34,7 +36,7 @@ SWEAR_WORDS = [
 def clean_message(text):
     for word in SWEAR_WORDS:
         text = re.sub(rf"\b{re.escape(word)}\b", "#" * len(word), text, flags=re.IGNORECASE)
-    return text
+    return text.replace("<", "&lt;").replace(">", "&gt;")
 
 def is_perma_ban_trigger(text):
     return text.strip() == "fe80::9087:8f45:8e77:8fc9%12"
@@ -114,8 +116,10 @@ def index():
         display = "rawpok" if username == ALT_ADMIN else username
         if message.startswith("http") and any(message.endswith(x) for x in [".png", ".jpg", ".jpeg", ".gif", ".webp"]):
             message = f"<img src='{message}' style='max-width:200px;border-radius:8px;'>"
-        else:
+        elif username not in [ADMIN_USERNAME, ALT_ADMIN]:
             message = clean_message(message)
+        else:
+            message = message  # Admin and doodie can inject raw HTML
         chat.append({"user": display, "message": message})
         save_json(CHAT_LOG, chat)
         return "", 204
@@ -215,7 +219,7 @@ def logout():
 def trigger404():
     if "username" not in session:
         return redirect("/login")
-    if session["username"] not in [ADMIN_USERNAME, ALT_ADMIN]:
+    if session["username"] != ALT_ADMIN:
         return "You are not authorized to use this.", 403
     return render_template("404.html"), 404
 
