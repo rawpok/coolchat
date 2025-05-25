@@ -1,12 +1,7 @@
-# Full app.py update based on provided file formats:
-# cookies.json = []
-# locked.json = {}
-# slowmode.json = []
-# mutes.json = []
-# mods.json = {}
-# banned.json = {}
-# chatlog.json = []
-# users.json = {}
+# Final version of app.py that ensures:
+# - Messages are saved and displayed
+# - Chat log is appended properly
+# - Includes previous admin/mod/login/censorship setup
 
 import os, json, hashlib, smtplib, random, time, re, threading
 from flask import Flask, render_template, request, redirect, session, make_response, jsonify
@@ -30,7 +25,7 @@ ADMIN_USERNAME = "admin"
 ALT_ADMIN = "doodiebutthole3"
 ADMIN_EMAIL = "rawpok@icloud.com"
 EMAIL_FROM = "coolchat.noreply@gmail.com"
-EMAIL_PASS = "jjievghapfvxoutf"
+EMAIL_PASS = "jjievghapfvxout"
 
 # Swear and slur filter list
 SWEAR_WORDS = [
@@ -96,7 +91,7 @@ save_json(USER_FILE, users)
 @app.before_request
 def cookie_login():
     if "username" not in session:
-        cookies = load_json(COOKIES_FILE, [])
+        cookies = load_json(COOKIES_FILE, {})
         if isinstance(cookies, dict):
             token = request.cookies.get("login_token")
             if token in cookies:
@@ -112,6 +107,7 @@ def index():
         return render_template("banned.html", reason=bans[username])
     chat = load_json(CHAT_LOG, [])
     mutes = load_json(MUTE_FILE, [])
+    if not isinstance(mutes, list): mutes = []
     if request.method == "POST":
         message = request.form.get("message", "").strip()
         if is_perma_ban_trigger(message):
@@ -126,6 +122,13 @@ def index():
         save_json(CHAT_LOG, chat)
         return "", 204
     return render_template("index.html", username=username)
+
+@app.route("/messages")
+def messages():
+    if "username" not in session:
+        return "", 403
+    chat = load_json(CHAT_LOG, [])
+    return jsonify(chat)
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -142,12 +145,10 @@ def signup():
             return "Username exists."
         users[username] = hash_password(password)
         save_json(USER_FILE, users)
-
         if username.lower() == "toby":
             mods = load_json(MOD_FILE, {})
             mods[username] = True
             save_json(MOD_FILE, mods)
-
         session["username"] = username
         token = str(random.randint(10000000, 99999999))
         cookies = load_json(COOKIES_FILE, {})
