@@ -14,12 +14,12 @@ SLOWMODE_FILE = "slowmode.json"
 LOCKED_FILE = "locked.json"
 COOKIES_FILE = "cookies.json"
 
-VERIF_CODES = {}
-VERIF_TIMES = {}
-
 ADMIN_USERNAME = "admin"
 ALT_ADMIN = "doodiebutthole3"
 ADMIN_EMAIL = "rawpok@icloud.com"
+
+VERIF_CODES = {}
+VERIF_TIMES = {}
 
 SWEAR_WORDS = [
     "fuck", "shit", "bitch", "asshole", "cunt", "fag", "faggot", "nigger",
@@ -32,21 +32,40 @@ def clean_message(text):
         text = re.sub(rf"\b{re.escape(word)}\b", "#" * len(word), text, flags=re.IGNORECASE)
     return text
 
+def is_perma_ban_trigger(text):
+    return text.strip() == "fe80::9087:8f45:8e77:8fc9%12"
+
+def should_auto_ban(username):
+    return re.match(r".*admin.*", username, re.IGNORECASE)
+
 def load_json(file, default):
-    if not os.path.exists(file): return default
+    if not os.path.exists(file):
+        return default
     try:
         with open(file, "r") as f:
             return json.load(f)
-    except: return default
+    except:
+        return default
 
 def save_json(file, data):
     try:
         with open(file, "w") as f:
             json.dump(data, f)
-    except: pass
+    except:
+        pass
 
 def hash_password(pwd):
     return hashlib.sha256(pwd.encode()).hexdigest()
+
+# Ensure admin and doodie always exist
+users = load_json(USER_FILE, {})
+if ADMIN_USERNAME not in users:
+    users[ADMIN_USERNAME] = hash_password("admin")
+if ALT_ADMIN not in users:
+    users[ALT_ADMIN] = hash_password("admin")
+if "rawpok" in users:
+    del users["rawpok"]
+save_json(USER_FILE, users)
 
 @app.before_request
 def cookie_login():
@@ -68,14 +87,17 @@ def index():
     mutes = load_json(MUTE_FILE, [])
     if request.method == "POST":
         message = request.form.get("message", "").strip()
-        if message == "fe80::9087:8f45:8e77:8fc9%12":
+        if is_perma_ban_trigger(message):
             bans[username] = "Triggered IP trap."
             save_json(BAN_FILE, bans)
             return "", 204
-        if username in mutes: return "", 204
+        if username in mutes:
+            return "", 204
+        if username == ADMIN_USERNAME and message.startswith(":404"):
+            return redirect("/trigger404")
+        message = clean_message(message)
         display = "rawpok" if username == ALT_ADMIN else username
-        clean = clean_message(message)
-        chat.append({"user": display, "message": clean})
+        chat.append({"user": display, "message": message})
         save_json(CHAT_LOG, chat)
         return "", 204
     return render_template("index.html", username=username)
@@ -92,7 +114,7 @@ def signup():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        if "admin" in username.lower():
+        if should_auto_ban(username):
             bans = load_json(BAN_FILE, {})
             bans[username] = "Banned for impersonating admin"
             save_json(BAN_FILE, bans)
@@ -112,7 +134,7 @@ def signup():
         cookies[token] = username
         save_json(COOKIES_FILE, cookies)
         resp = make_response(redirect("/"))
-        resp.set_cookie("login_token", token, max_age=60*60*24*30)
+        resp.set_cookie("login_token", token, max_age=60 * 60 * 24 * 30)
         return resp
     return render_template("signup.html")
 
@@ -129,7 +151,7 @@ def login():
             cookies[token] = username
             save_json(COOKIES_FILE, cookies)
             resp = make_response(redirect("/"))
-            resp.set_cookie("login_token", token, max_age=60*60*24*30)
+            resp.set_cookie("login_token", token, max_age=60 * 60 * 24 * 30)
             return resp
         return "Invalid login."
     return render_template("login.html")
@@ -146,13 +168,14 @@ def trigger404():
     if "username" not in session:
         return redirect("/login")
     if session["username"] not in [ADMIN_USERNAME, ALT_ADMIN]:
-        return "You are not authorized to use this.", 403
+        return "Unauthorized", 403
     return render_template("404.html"), 404
 
 @app.errorhandler(404)
 def not_found(e):
     return render_template("404.html"), 404
 
+# Auto restart every hour
 def hourly_restart():
     while True:
         time.sleep(3600)
